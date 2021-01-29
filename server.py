@@ -1,5 +1,6 @@
 #  coding: utf-8 
 import socketserver
+import os
 
 # Copyright 2013 Abram Hindle, Eddie Antonio Santos
 # 
@@ -30,9 +31,91 @@ import socketserver
 class MyWebServer(socketserver.BaseRequestHandler):
     
     def handle(self):
-        self.data = self.request.recv(1024).strip()
-        print ("Got a request of: %s\n" % self.data)
-        self.request.sendall(bytearray("OK",'utf-8'))
+        # Receive request and clean sent data
+        self.data = self.request.recv(1024).decode("utf-8")
+        # Separate data headers by lines
+        self.split_lines = self.data.splitlines()
+        # Check that GET is the method
+        if not self.split_lines[0].startswith("GET"):
+            self.error_codes("405")
+            return
+        # Store header information
+        self.data_headers = {}
+        for x in self.data.splitlines():
+            if not x.startswith("GET") and not x == "":
+                key, value = x.split(": ")
+                self.data_headers[key] = value
+        
+        # Get the requested path
+        requested = self.split_lines[0].split(" ")[1]
+        req_file_bool = os.path.isfile("www" + requested)
+        req_dir2_bool = os.path.isdir("www" + requested + "/")
+        req_dir1_bool = os.path.isdir("www" + requested)
+        
+        # Check if the path is a directory
+        if req_dir1_bool and requested[-1] == "/":
+            path = "www" + requested + "index.html"
+        
+        elif req_dir2_bool:
+            self.error_codes("301", requested + "/")
+            return
+        # Check if the file is valid
+        elif not req_file_bool:
+            self.error_codes("404", requested)
+            return
+        else:
+            path = "www" + requested
+
+        html_string = ""
+
+        file_data = open(path, 'r')
+        for line in file_data:
+            html_string += line
+        self.request.sendall(bytearray("HTTP/1.1 200 OK\r\nContent-Type: text/%s; charset=utf-8\r\n\r\n"%(path.split(".")[1])+html_string, 'utf-8'))
+
+
+
+        #print ("Got a request of: %s\n" % self.data)
+        #print(self.data_headers)
+        
+        #print(self.data)
+
+
+
+        #self.request.sendall(bytearray("OK", 'utf-8'))
+
+
+
+    def error_codes(self, error, location=None):
+        print(error, location)
+
+        if error == "301":
+            self.request.sendall(bytearray(f"""HTTP/1.1 301 Moved Permanently
+                                          \r\nLocation: {location}
+                                          \r\nContent-Type: text/plain; charset=utf-8
+                                          \r\nStatus: 301 Moved Permanently\r\n\r\n""", 'utf-8'))
+
+
+        elif error == "404":
+            self.request.sendall(bytearray("""HTTP/1.1 404 Not Found
+                                          \r\nContent-Type: text/html; charset=utf-8
+                                          \r\nStatus: 404 Not Found\r\n
+                                          \r\n<html>
+                                              <head>
+                                              <title>404 Not Found</title>
+                                              </head>
+                                              <body>
+                                              <center>
+                                              <h1>404 Not Found</h1>
+                                              </center>
+                                              </body>
+                                              </html>
+                                               """, 'utf-8'))
+
+        elif error == "405":
+            self.request.sendall(bytearray("""HTTP/1.1 405 Method Not Allowed
+                                          \r\nContent-Type: text/plain; charset=utf-8
+                                          \r\nStatus: 405 Method Not Allowed\r\n\r\n""", 'utf-8'))
 
 if __name__ == "__main__":
     HOST, PORT = "localhost", 8080
